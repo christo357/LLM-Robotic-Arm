@@ -1,0 +1,16 @@
+torch
+torchvision
+torchaudio
+
+gymnasium
+gymnasium-robotics
+gymnasium[other]
+
+stable-baselines3[extra]
+
+numpy
+wandb
+matplotlib
+seaborn
+
+
