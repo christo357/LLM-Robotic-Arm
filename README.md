@@ -2,6 +2,23 @@
 
 This project implements a **natural language interface** for controlling a Fetch robotic arm in a simulated environment (`gymnasium-robotics`). It uses a Large Language Model (LLM) to parse user intent into precise spatial commands and a pre-trained Reinforcement Learning (RL) agent (`TQC` from `Stable-Baselines3`) to execute the movement dynamics.
 
+## Videos
+
+Stacking blocks (short):
+
+https://github.com/user-attachments/assets/30333f68-7b79-4e04-ae1f-95e83ccc1749
+
+
+Overall : 
+
+https://github.com/user-attachments/assets/4f00a40a-98d4-4b68-9d3b-923aa208510c
+
+
+
+
+
+
+
 ## 🌟 Key Features
 
 * **Natural Language Control:** Speak to the robot naturally (e.g., *"Put the blue block on the right edge"*).
@@ -28,13 +45,12 @@ The system operates in a loop:
 
 ```mermaid
 graph TD
-    User[User Command] -->|Text| LLM[LLM Parser (Llama/GPT)]
-    LLM -->|JSON| Logic[State Machine]
-    Logic -->|Set Goal/Focus| Env[Gymnasium Environment]
-    Model[RL Model (TQC)] -->|Observation| Env
+    User["User Command"] -->|Text| LLM["LLM Parser (Llama/GPT)"]
+    LLM -->|JSON| Logic["State Machine"]
+    Logic -->|Set Goal/Focus| Env["Gymnasium Environment"]
+    Model["RL Model (TQC)"] -->|Observation| Env
     Env -->|Reward/State| Model
-    Model -->|Action| Robot[Fetch Robot Arm]
-
+    Model -->|Action| Robot["Fetch Robot Arm"]
 ```
 
 ---
