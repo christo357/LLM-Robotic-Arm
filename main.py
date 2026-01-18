@@ -13,14 +13,17 @@ import gymnasium_robotics
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from sb3_contrib import TQC
 from openai import OpenAI
+from huggingface_hub import hf_hub_download 
 from dotenv import load_dotenv
 
-load_dotenv()
-
-# --- Custom Imports ---
 import my_envs
 from wrappers import ActiveObjectWrapper, ManualGoalWrapper
 
+load_dotenv()
+
+HF_REPO_ID = "christo357/TQC_FetchPickAndPlace_v4"
+MODEL_FILENAME = "tqcdense_model.zip"
+VECNORM_FILENAME = "tqcdense_vecnorm.pkl"
 # ==========================================
 # 1. LLM Configuration (EDIT THIS)
 # ==========================================
@@ -37,7 +40,7 @@ MODEL_NAME = "llama-3.1-8b-instant"
 
 # Option C: OpenAI GPT-4o
 # API_KEY = "sk-..."
-# BASE_URL = None # Defaults to OpenAI
+# BASE_URL = None 
 # MODEL_NAME = "gpt-4o"
 
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
@@ -54,7 +57,7 @@ class LLMParser:
                 "type": "function",
                 "function": {
                     "name": "robot_controller",
-                    "description": "Control Fetch Robot. DISTINGUISH CLEARLY: 'Focus' = Select Object. 'Goal' = Move Object.",
+                    "description": "Control Fetch Robot.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -120,7 +123,6 @@ class LLMParser:
     def parse(self, user_text, current_n_objects):
         active_colors = self.colors[:current_n_objects]
         
-        # We clarify the difference in the system prompt too
         system_prompt = f"""
         You are a robot controller. You control a Fetch Robot on a table (height 0.42m).
         Active Objects: {', '.join(active_colors)}.
@@ -134,16 +136,28 @@ class LLMParser:
             Trigger words: "Move", "Put", "Place", "Set target", "Lift", "Raise", "Above", "Next to".
             Rule: If the user mentions a location (e.g., "above green", "to the right"), it is ALWAYS 'goal'.
             
-            Example 1. "Move blue to right edge" -> intent: goal, relative_to: "table", position: "right_edge".
-            Example 2. "Move blue to x=1.3, y=0.4" -> intent: goal, relative_to: "table", dest_x: 1.3, dest_y: 0.4.
-            Exmaple 3. "Lift blue 0.2m above table" -> intent: goal, relative_to: "table", dest_z: 0.625 (0.425+0.2).
+            Example 1. "Move yellow to right edge" -> intent: goal, target_color: "yellow",relative_to: "table", position: "right_edge".(Note: Must include 'target_color' so the robot knows WHAT to move).
+            Example 2. "Lift green .2m" -> intent: goal, target_color: "green", relative_to: "table", dest_z: 0.625.
+            Exmaple 3. "Lift blue 0.2m above table" -> intent: goal, target_color: "blue",relative_to: "table", dest_z: 0.625 (0.425+0.2).
             Example 4. "Set target above green" -> {{ "intent": "goal", "relative_to": "green", "position": "above" }}
+                  (If user doesn't say WHAT to move, omit target_color, robot uses current).
         
         2. INTENT: 'FOCUS' (Selection Only)
            Trigger words: "Look at", "Select", "Switch to", "Focus on".
            Rule: NEVER use 'focus' if there is a spatial preposition (above, on, at).
            Example: "Select blue" -> {{ "intent": "focus", "target_color": "blue" }}.
         3. "Stack X on Y" -> Sequence: Focus X -> Goal Above X -> Goal Above Y -> Goal Stack Y.
+        EXAMPLE: "Stack blue on red"
+        Output:
+        {{
+          "intent": "sequence",
+          "steps": [
+             {{"intent": "focus", "target_color": "blue"}}, 
+             {{"intent": "goal", "relative_to": "blue", "position": "above"}},  // Step 1: Lift Self
+             {{"intent": "goal", "relative_to": "red", "position": "above"}},   // Step 2: Move Over Base
+             {{"intent": "goal", "relative_to": "red", "position": "stack"}}    // Step 3: Lower/Place
+          ]
+        }}
         4. If the coordinates asked are not within the range of coordinate system, use the maximum/minimum possible value. 
         Eg. if the user asks to raise 1 m above table, set a target at height  0.87(maximum height), and random x, y coordinates.
         """
@@ -204,8 +218,28 @@ def input_listener(llm_parser):
             break
 
 # ==========================================
-# 4. Helper: Environment Setup
+# 4. Helpers
 # ==========================================
+def get_model_path(filename):
+    """
+    Checks local 'models/' folder. If missing, downloads from Hugging Face.
+    """
+    local_path = os.path.join("models", filename)
+    
+    # If file exists locally, use it
+    if os.path.exists(local_path):
+        return local_path
+    
+    print(f"⬇️ {filename} not found locally. Downloading from HF: {HF_REPO_ID}...")
+    try:
+        # Downloads to a cached location managed by HF
+        cached_path = hf_hub_download(repo_id=HF_REPO_ID, filename=filename)
+        print(f"✅ Downloaded to: {cached_path}")
+        return cached_path
+    except Exception as e:
+        print(f"❌ Error downloading from HF: {e}")
+        return None
+    
 def create_env(n_objects):
     gym.register_envs(gymnasium_robotics)
     env = gym.make(
@@ -229,42 +263,54 @@ def create_env(n_objects):
 
 def apply_goal_logic(env, cmd, colors_map, state_n_objects):
     """
+    1. Switches Focus (if target_color provided).
+    2. Sets Goal (Relative or Absolute).
     Parses a goal command and updates the environment.
     Returns True if successful, False if target invalid.
     """
+    
+    # --- STEP 1: AUTO-FOCUS LOGIC ---
+    if "target_color" in cmd and cmd["target_color"]:
+        color = cmd["target_color"].lower()
+        tid = colors_map.get(color)
+        if tid is not None and tid < state_n_objects:
+            print(f"👀 Auto-Switching Focus to {color} (ID: {tid})")
+            env.env_method("set_active_object", tid)
+        else:
+            print(f"⚠️ Cannot focus: {color} not found.")
+            return False
+
+    # --- STEP 2: SET GOAL ---
+    
     # ----------------------------------------
     # CASE A: Absolute Table Coordinates
     # ----------------------------------------
     if cmd.get("relative_to") == "table" or cmd.get("dest_x") is not None:
         # Default defaults (Center of table)
         x = cmd.get("dest_x", 1.30)
-        y = cmd.get("dest_y", 0.53)
+        y = cmd.get("dest_y", 0.80)
         z = cmd.get("dest_z", 0.43) # Just slightly above surface
 
         # Handle Semantic Table Positions (Overrides explicit coords if set)
         pos_name = cmd.get("position")
         if pos_name == "center":
-            x, y = 1.30, 0.53
+            x, y = 1.30, 0.80
         elif pos_name == "right_edge":
-            y = 0.40 # Near 0.38
+            y = 0.60 # Near 0.38
         elif pos_name == "left_edge":
-            y = 0.66 # Near 0.68
+            y = 1.00 # Near 0.68
         elif pos_name == "front":
-            x = 1.15 # Near robot
+            x = 1.40 # Far from robot
         elif pos_name == "back":
-            x = 1.38 # Far from robot
+            x = 1.15 # Near from robot
 
         # Safety Clamps (User provided bounds)
-        x = np.clip(x, 1.10, 1.40)
-        y = np.clip(y, 0.38, 0.68)
+        x = np.clip(x, 1.15, 1.43)
+        y = np.clip(y, 0.60, 1.00)
         z = np.clip(z, 0.425, 0.86)
 
         print(f"📍 Setting Absolute Goal: [{x:.2f}, {y:.2f}, {z:.2f}]")
         
-        # We assume your ManualGoalWrapper allows setting the goal directly.
-        # If your wrapper doesn't have a specific method, we can usually
-        # call the internal method or set the attribute if accessible.
-        # Here we use a generic 'set_goal' method call.
         try:
             env.env_method("set_goal", np.array([x, y, z]))
             return True
@@ -319,7 +365,13 @@ if __name__ == "__main__":
     
     # Load Env
     env = create_env(state["n_objects"])
-    model = TQC.load('models/tqcdense_model.zip', env=env)
+    # 3. Load Model from HF
+    model_path = get_model_path(MODEL_FILENAME)
+    if not model_path:
+        print("❌ CRITICAL: Model file missing. Exiting.")
+        exit()
+        
+    model = TQC.load(model_path, env=env)
     obs = env.reset()
     
     void_action = np.array([[0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
@@ -337,11 +389,8 @@ if __name__ == "__main__":
 
             # Check for Manual Reset
             if main_cmd.get("intent") == "reset":
-                if main_cmd.get("n_objects"):
-                    state["n_objects"] = main_cmd["n_objects"]
-                else:
-                    state["n_objects"] = 4
-                state["last_goal_cmd"] = None # Clear targets
+                state["n_objects"] = main_cmd.get("n_objects", 4)
+                # state["last_goal_cmd"] = None # Clear targets
                 state["reset_req"] = True
                 break
             
@@ -363,15 +412,6 @@ if __name__ == "__main__":
                 if intent == "control":
                     state["running"] = (cmd["action"] == "start")
                 
-                elif intent == "scene":
-                    new_n = cmd["n_objects"]
-                    # Safety check for min/max objects
-                    if new_n < 1: new_n = 1
-                    if new_n > 5: new_n = 5
-                    
-                    state["n_objects"] = new_n
-                    state["reset_req"] = True
-                
                 elif intent == "focus":
                     color = cmd["target_color"].lower()
                     tid = colors_map.get(color, 0)
@@ -384,30 +424,33 @@ if __name__ == "__main__":
                     
                     success = apply_goal_logic(env, cmd, colors_map, state["n_objects"])
                     if success:
-                        if intent != "sequence": # Only save persistent goal if not a temp sequence step
-                             state["last_goal_cmd"] = cmd
                         obs, _, _, _ = env.step(void_action)
                         
-                    if state["running"]:
-                        print("      ... Executing movement ...")
-                        # Wait 2.5 seconds (adjust based on your robot speed)
-                        # We use a loop here to keep rendering while waiting
-                        for _ in range(60): 
+                        # print("      ... Executing movement ...")
+                        # --- MOVEMENT LOOP ---
+                        print("      ... Moving ...")
+                        for _ in range(30): # Run for 3 seconds
                             action, _ = model.predict(obs, deterministic=True)
                             obs, _, _, _ = env.step(action)
                             env.render()
                             time.sleep(0.04)
+                        
+                        # --- STABILIZATION (Fix Vibration) ---
+                        print("      🛑 Stabilizing...")
+                        stop_action = np.array([[0.0, 0.0, 0.0, action[0,3]]], dtype=np.float32)
+                        for _ in range(10):
+                            obs, _, _, _ = env.step(stop_action)
+                            env.render()
+                            time.sleep(0.04)
                             
-                        # --- RELEASE LOGIC (New!) ---
+                        # --- RELEASE LOGIC  ---
                         # If this step was a "stack" operation, force the gripper open
                         if cmd.get("position") == "stack":
                             print("      👐 Releasing block...")
-                            # Run for 20 frames (~1 sec) forcing gripper open
-                            # action, _ = model.predict(obs, deterministic=True)
 
                             # PHASE 1: RELEASE (Stop moving, Open Gripper)
-                            # We send 0.0 for X,Y,Z to stop vibrations instantly.
-                            # We send 1.0 for Gripper to force it open.
+                            # 0.0 for X,Y,Z to stop vibrations instantly.
+                            # 1.0 for Gripper to force it open.
                             stop_action = np.array([[0.0, 0.0, 0.0, 1.0]], dtype=np.float32)
                             
                             for _ in range(15):  # Hold for ~0.6 seconds
@@ -416,7 +459,7 @@ if __name__ == "__main__":
                                 time.sleep(0.04)
 
                             # PHASE 2: RETRACT (Move Up, Keep Open)
-                            # We manually add +1.0 to Z to lift the arm straight up.
+                            # Manually add +1.0 to Z to lift the arm straight up.
                             # This prevents the gripper from clipping the block when moving away.
                             lift_action = np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32)
                             
@@ -425,11 +468,12 @@ if __name__ == "__main__":
                                 env.render()
                                 time.sleep(0.04)
                                 
-            # --- SEQUENCE FINISHED ---
-            # Stop the robot so it doesn't loop or drift.
-            if main_cmd.get("intent") == "sequence":
-                print("✅ Sequence Complete. Stopping.")
-                state["running"] = False
+                                
+            if main_cmd.get("intent") in ["goal", "sequence"]:
+                 print("✅ Move complete. Pausing physics.")
+                 state["running"] = False
+                                
+
 
         # B. Handle Reset
         if state["reset_req"]:
@@ -441,25 +485,18 @@ if __name__ == "__main__":
             model.set_env(env)
             obs = env.reset()
             
-            # RE-APPLY PERSISTENT GOAL
-            # If we had a target set (e.g., "above green"), re-apply it now
-            if state["last_goal_cmd"]:
-                print(f"--> Restoring target: {state['last_goal_cmd']['relative_to']}")
-                apply_goal_logic(env, state["last_goal_cmd"], colors_map, state["n_objects"])
-                # Refresh obs after setting goal
-                obs, _, _, _ = env.step(void_action)
-            
             state["reset_req"] = False
             state["running"] = False
             print(f"--> Scene Reset with {state['n_objects']} objects.")
 
-        # C. Physics Step
+        # This handles "Start" (continuous run) vs "Stop" (idle)
         if state["running"]:
+            # If "Start" was pressed, run the model indefinitely
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
             env.render()
             time.sleep(0.04)
         else:
+            # If "Stop" or idle, just render the scene
             env.render()
             time.sleep(0.1)
-    

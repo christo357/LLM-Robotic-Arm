@@ -1,16 +1,13 @@
-torch
-torchvision
-torchaudio
-
+numpy
 gymnasium
 gymnasium-robotics
 gymnasium[other]
-
 stable-baselines3[extra]
+huggingface_hub
+openai
+python-dotenv
 
-numpy
-wandb
-matplotlib
-seaborn
-
+# for running training scripts of model
+# torch
+# wandb
 
