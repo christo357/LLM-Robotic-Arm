@@ -8,14 +8,16 @@ from gymnasium_robotics.envs.fetch import MujocoFetchEnv
 from gymnasium.utils.ezpickle import EzPickle
 
 
-GYMROB_FILE = os.path.dirname(gymnasium_robotics.__file__)
+# GYMROB_FILE = os.path.dirname(gymnasium_robotics.__file__)
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+assets_dir = os.path.join(current_dir, '..', 'assets', 'xml')
 MODEL_XML_PATH = os.path.join(
-    GYMROB_FILE,
-    "envs",
-    "assets", 
-    "fetch", 
+    assets_dir, 
     "multi_pick_and_place.xml"
 )
+if not os.path.exists(MODEL_XML_PATH):
+    raise FileNotFoundError(f"❌ Error: Could not find XML at {MODEL_XML_PATH}")
 
 
 def sample_non_overlapping_xy(
@@ -127,11 +129,14 @@ class MultiObjectFetchPickAndPlaceEnv(MujocoFetchEnv, EzPickle):
                 )
             for i in range(self.n_objects, 5):
                 joint_name = f"object{i}:joint"
-                object_qpos = self._utils.get_joint_qpos(self.model, self.data, joint_name)
-                object_qpos[0] = 0.0
-                object_qpos[1] = 0.0
-                object_qpos[2] = -10.0   # far below the table
-                self._utils.set_joint_qpos(self.model, self.data, joint_name, object_qpos)
+                try:
+                    object_qpos = self._utils.get_joint_qpos(self.model, self.data, joint_name)
+                    object_qpos[0] = 0.0
+                    object_qpos[1] = 0.0
+                    object_qpos[2] = -10.0   # far below the table
+                    self._utils.set_joint_qpos(self.model, self.data, joint_name, object_qpos)
+                except KeyError:
+                        pass
 
         # 3) Forward physics
         self._mujoco.mj_forward(self.model, self.data)
