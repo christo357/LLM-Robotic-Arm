@@ -1,5 +1,6 @@
 """
     Script to use LLM with tools for query
+    
 """
 
 import os
@@ -433,7 +434,7 @@ if __name__ == "__main__":
                             action, _ = model.predict(obs, deterministic=True)
                             obs, _, _, _ = env.step(action)
                             env.render()
-                            time.sleep(0.04)
+                            time.sleep(0.016)
                         
                         # --- STABILIZATION (Fix Vibration) ---
                         print("      🛑 Stabilizing...")
@@ -441,7 +442,7 @@ if __name__ == "__main__":
                         for _ in range(10):
                             obs, _, _, _ = env.step(stop_action)
                             env.render()
-                            time.sleep(0.04)
+                            time.sleep(0.016)
                             
                         # --- RELEASE LOGIC  ---
                         # If this step was a "stack" operation, force the gripper open
@@ -456,7 +457,7 @@ if __name__ == "__main__":
                             for _ in range(15):  # Hold for ~0.6 seconds
                                 obs, _, _, _ = env.step(stop_action)
                                 env.render()
-                                time.sleep(0.04)
+                                time.sleep(0.016)
 
                             # PHASE 2: RETRACT (Move Up, Keep Open)
                             # Manually add +1.0 to Z to lift the arm straight up.
@@ -466,7 +467,7 @@ if __name__ == "__main__":
                             for _ in range(10): # Lift for ~0.8 seconds
                                 obs, _, _, _ = env.step(lift_action)
                                 env.render()
-                                time.sleep(0.04)
+                                time.sleep(0.016)
                                 
                                 
             if main_cmd.get("intent") in ["goal", "sequence"]:
@@ -495,7 +496,7 @@ if __name__ == "__main__":
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
             env.render()
-            time.sleep(0.04)
+            time.sleep(0.016)
         else:
             # If "Stop" or idle, just render the scene
             env.render()
