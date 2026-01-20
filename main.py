@@ -433,7 +433,7 @@ if __name__ == "__main__":
                             action, _ = model.predict(obs, deterministic=True)
                             obs, _, _, _ = env.step(action)
                             env.render()
-                            time.sleep(0.016)
+                            time.sleep(0.01)
                         
                         # --- STABILIZATION (Fix Vibration) ---
                         print("      🛑 Stabilizing...")
@@ -441,7 +441,7 @@ if __name__ == "__main__":
                         for _ in range(10):
                             obs, _, _, _ = env.step(stop_action)
                             env.render()
-                            time.sleep(0.016)
+                            time.sleep(0.01)
                             
                         # --- RELEASE LOGIC  ---
                         if cmd.get("position") == "stack":
@@ -455,7 +455,7 @@ if __name__ == "__main__":
                             for _ in range(15):
                                 obs, _, _, _ = env.step(stop_action)
                                 env.render()
-                                time.sleep(0.016)
+                                time.sleep(0.01)
 
                             # PHASE 2: RETRACT (Move Up, Keep Open)
                             # Manually add +1.0 to Z to lift the arm straight up.
@@ -465,7 +465,7 @@ if __name__ == "__main__":
                             for _ in range(10): # Lift for ~0.8 seconds
                                 obs, _, _, _ = env.step(lift_action)
                                 env.render()
-                                time.sleep(0.016)
+                                time.sleep(0.01)
                                 
                                 
             if main_cmd.get("intent") in ["goal", "sequence"]:
@@ -493,7 +493,7 @@ if __name__ == "__main__":
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
             env.render()
-            time.sleep(0.016)
+            time.sleep(0.01)
         else:
             # If "Stop" or idle, just render the scene
             env.render()
