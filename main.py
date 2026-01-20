@@ -1,5 +1,5 @@
 """
-    Script to use LLM with tools for query
+    Main Script to run the model. 
     
 """
 
@@ -26,10 +26,10 @@ HF_REPO_ID = "christo357/TQC_FetchPickAndPlace_v4"
 MODEL_FILENAME = "tqcdense_model.zip"
 VECNORM_FILENAME = "tqcdense_vecnorm.pkl"
 # ==========================================
-# 1. LLM Configuration (EDIT THIS)
+# 1. LLM Configuration
 # ==========================================
-# Option A: Groq (Fastest/Free)
-API_KEY = os.getenv('GROK_API') # <--- Paste your Groq Key here
+# Option A: Groq 
+API_KEY = os.getenv('GROK_API') # 
 BASE_URL = "https://api.groq.com/openai/v1"
 MODEL_NAME = "llama-3.1-8b-instant" 
 # MODEL_NAME = "openai/gpt-oss-120b"
@@ -47,7 +47,7 @@ MODEL_NAME = "llama-3.1-8b-instant"
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
 # ==========================================
-# 2. The Semantic Parser (Tool Calling Edition)
+# 2. The Semantic Parser 
 # ==========================================
 class LLMParser:
     def __init__(self):
@@ -227,7 +227,6 @@ def get_model_path(filename):
     """
     local_path = os.path.join("models", filename)
     
-    # If file exists locally, use it
     if os.path.exists(local_path):
         return local_path
     
@@ -401,7 +400,7 @@ if __name__ == "__main__":
                 print(f"📋 Received Sequence with {len(steps)} steps.")
                 state['running'] = True
             else:
-                steps = [main_cmd] # Treat single command as a list of 1
+                steps = [main_cmd] # single command 
             
             # --- EXECUTE STEPS SEQUENTIALLY ---
             for i, cmd in enumerate(steps):
@@ -418,8 +417,8 @@ if __name__ == "__main__":
                     tid = colors_map.get(color, 0)
                     if tid < state["n_objects"]:
                         env.env_method("set_active_object", tid)
-                        # Quick refresh
-                        obs, _, _, _ = env.step(void_action)
+                        obs, _, _, _ = env.step(void_action)     # Quick refresh
+
                     
                 elif intent == "goal":
                     
@@ -430,7 +429,7 @@ if __name__ == "__main__":
                         # print("      ... Executing movement ...")
                         # --- MOVEMENT LOOP ---
                         print("      ... Moving ...")
-                        for _ in range(30): # Run for 3 seconds
+                        for _ in range(30): 
                             action, _ = model.predict(obs, deterministic=True)
                             obs, _, _, _ = env.step(action)
                             env.render()
@@ -445,7 +444,6 @@ if __name__ == "__main__":
                             time.sleep(0.016)
                             
                         # --- RELEASE LOGIC  ---
-                        # If this step was a "stack" operation, force the gripper open
                         if cmd.get("position") == "stack":
                             print("      👐 Releasing block...")
 
@@ -454,7 +452,7 @@ if __name__ == "__main__":
                             # 1.0 for Gripper to force it open.
                             stop_action = np.array([[0.0, 0.0, 0.0, 1.0]], dtype=np.float32)
                             
-                            for _ in range(15):  # Hold for ~0.6 seconds
+                            for _ in range(15):
                                 obs, _, _, _ = env.step(stop_action)
                                 env.render()
                                 time.sleep(0.016)
@@ -490,7 +488,6 @@ if __name__ == "__main__":
             state["running"] = False
             print(f"--> Scene Reset with {state['n_objects']} objects.")
 
-        # This handles "Start" (continuous run) vs "Stop" (idle)
         if state["running"]:
             # If "Start" was pressed, run the model indefinitely
             action, _ = model.predict(obs, deterministic=True)
