@@ -2,16 +2,21 @@
 
 This project implements a **natural language interface** for controlling a Fetch robotic arm in a simulated environment (`gymnasium-robotics`). It uses a Large Language Model (LLM) to parse user intent into precise spatial commands and a pre-trained Reinforcement Learning (RL) agent (`TQC` from `Stable-Baselines3`) to execute the movement dynamics.
 
-## Videos
+## Video
 
-Stacking blocks (short):
+<!--Stacking blocks (short):
 
 https://github.com/user-attachments/assets/30333f68-7b79-4e04-ae1f-95e83ccc1749
 
 
 Overall : 
 
-https://github.com/user-attachments/assets/e5560d35-05b3-489d-9a0a-fa090a45930e
+ https://github.com/user-attachments/assets/e5560d35-05b3-489d-9a0a-fa090a45930e -->
+
+
+https://github.com/user-attachments/assets/b00fc52a-a2b4-4722-83e1-20831d9ac7ee
+
+
 
 
 
