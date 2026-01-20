@@ -153,7 +153,7 @@ The parser maps natural language to the Fetch table coordinates (in meters):
 
 RL models often jitter when holding a position because they are constantly correcting errors. We solved this by implementing a **Finite Action Loop**:
 
-1. The agent runs for exactly ~3 seconds (80 frames) to reach the target.
+1. The agent runs for 80 frames to reach the target.
 2. The script sends a `[0,0,0]` velocity command to "park" the arm.
 3. The physics loop pauses (`state['running'] = False`) until the next command.
 
